@@ -100,9 +100,9 @@ Central coordinator. Holds a voices hash (keyed by voice UUID) and dialogues has
 
 ## Integration Points
 
-- **lex-tick**: `action_selection` phase can invoke self-talk to deliberate before committing to an action
+- **lex-tick**: can be wired into `action_selection` phase to deliberate before committing to an action (not currently in lex-cortex's PHASE_MAP — caller must wire manually)
 - **lex-emotion**: emotional intensity can influence which voices are amplified
-- **lex-cortex**: wires self-talk into the phase handler map at runtime
+- **lex-cognitive-reappraisal**: reappraisal outcomes can inform which voice perspectives to amplify or dampen
 
 ## Development Notes
 
