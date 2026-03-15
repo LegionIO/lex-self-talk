@@ -30,9 +30,13 @@ lib/legion/extensions/self_talk/
     dialogue.rb         # Dialogue class - topic, turns, status, conclusion
                         # add_turn!, conclude!, deadlock!, abandon!, consensus_score, voice_positions
     self_talk_engine.rb # SelfTalkEngine class - coordinates voices and dialogues
+    llm_enhancer.rb     # LlmEnhancer module - generate_turn, summarize_dialogue
   runners/
     self_talk.rb        # register_voice, start_dialogue, add_turn, conclude_dialogue,
-                        # deadlock_dialogue, amplify_voice, dampen_voice, dialogue_report, self_talk_status
+                        # deadlock_dialogue, amplify_voice, dampen_voice, dialogue_report,
+                        # self_talk_status, decay_voices, generate_voice_turn
+  actors/
+    volume_decay.rb     # VolumeDecay - Every 300s, calls decay_voices
 spec/
   legion/extensions/self_talk/
     helpers/
@@ -98,11 +102,33 @@ Each turn takes a position from: `:support`, `:oppose`, `:question`, `:clarify`.
 
 Central coordinator. Holds a voices hash (keyed by voice UUID) and dialogues hash (keyed by dialogue UUID). Prunes the oldest dialogue when `MAX_DIALOGUES` is reached. `voice_balance` returns the proportional volume distribution across all voices.
 
+## Actor
+
+| Actor | Schedule | Runner Method |
+|---|---|---|
+| `VolumeDecay` | Every 300s | `decay_voices` |
+
+`VolumeDecay` runs every 5 minutes. It calls `dampen!` on every active voice by `VOLUME_DECAY` (0.05), preventing voices from holding elevated volumes indefinitely. Voices that are never amplified will trend toward silence over time.
+
+## LLM Enhancement
+
+`Helpers::LlmEnhancer` provides optional LLM-powered voice generation and dialogue summarization via `legion-llm`. It is used when `Legion::LLM.started?` returns true; all calls degrade gracefully to nil on error or when LLM is unavailable.
+
+| Method | Called From | Returns |
+|---|---|---|
+| `generate_turn(voice_type:, topic:, prior_turns:)` | `generate_voice_turn` (via `resolve_turn_content`) | `{ content:, position: }` |
+| `summarize_dialogue(topic:, turns:)` | `conclude_dialogue` (when no `summary` provided) | `{ summary:, recommendation: }` |
+
+`generate_turn` produces an in-character 1-3 sentence response for the given voice type, returning a position (`:support`, `:oppose`, `:question`, or `:clarify`) and content. `summarize_dialogue` synthesizes all turns into a 2-3 sentence conclusion with a recommendation (`:support`, `:oppose`, or `:abstain`).
+
+**Fallback**: `generate_voice_turn` uses a stub string `"[voice_type perspective on topic]"` with position `:clarify` when LLM is unavailable or returns nil. `conclude_dialogue` uses `"Dialogue concluded"` as the summary when LLM is unavailable or returns nil. The `source:` field in `generate_voice_turn` response is `:llm` or `:mechanical` to indicate which path was taken.
+
 ## Integration Points
 
 - **lex-tick**: can be wired into `action_selection` phase to deliberate before committing to an action (not currently in lex-cortex's PHASE_MAP — caller must wire manually)
 - **lex-emotion**: emotional intensity can influence which voices are amplified
 - **lex-cognitive-reappraisal**: reappraisal outcomes can inform which voice perspectives to amplify or dampen
+- **legion-llm**: optional dependency for LLM-generated voice turns and dialogue summaries
 
 ## Development Notes
 
@@ -110,3 +136,5 @@ Central coordinator. Holds a voices hash (keyed by voice UUID) and dialogues has
 - `dialogue_report` maps voice UUIDs to names in `voice_positions` for human-readable output
 - Inactive voices are excluded from `dominant_voice` / `quietest_voice` calculations
 - `voice_balance` returns `{}` when no voices are registered (avoids division by zero)
+- `generate_voice_turn` requires both the dialogue and voice to exist; returns `{ generated: false, reason: :dialogue_not_found | :voice_not_found }` if either is missing
+- `decay_voices` only dampens active voices; muted voices are skipped
