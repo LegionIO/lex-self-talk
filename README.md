@@ -90,6 +90,23 @@ client.self_talk_status
 | 0.2 - 0.4 | `:disagreement` |
 | 0.0 - 0.2 | `:conflict` |
 
+## Actors
+
+| Actor | Interval | Description |
+|-------|----------|-------------|
+| `VolumeDecay` | Every 300s | Calls `dampen!` on every active voice by `VOLUME_DECAY` (0.05), preventing voices from holding elevated volumes indefinitely. Voices that are never amplified will trend toward silence over time. Muted voices are skipped. |
+
+## LLM Enhancement
+
+`Helpers::LlmEnhancer` provides optional LLM-powered voice generation and dialogue summarization when `legion-llm` is loaded and `Legion::LLM.started?` returns true. All methods rescue `StandardError` and return `nil` — callers always fall back to mechanical processing.
+
+| Method | Description |
+|--------|-------------|
+| `generate_turn(voice_type:, topic:, prior_turns:)` | Generates a realistic in-character 1-3 sentence response for the given voice type, returning a `position` (`:support`, `:oppose`, `:question`, or `:clarify`) and `content` |
+| `summarize_dialogue(topic:, turns:)` | Synthesizes all dialogue turns into a 2-3 sentence conclusion with a `recommendation` (`:support`, `:oppose`, or `:abstain`) and a `summary` |
+
+Mechanical fallback: `generate_voice_turn` uses the stub string `"[voice_type perspective on topic]"` with position `:clarify` when LLM is unavailable or returns `nil`. `conclude_dialogue` uses `"Dialogue concluded"` as the summary. The `source:` field in `generate_voice_turn` results is `:llm` or `:mechanical` to indicate which path was taken.
+
 ## Development
 
 ```bash
