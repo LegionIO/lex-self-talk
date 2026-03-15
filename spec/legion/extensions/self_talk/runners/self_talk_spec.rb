@@ -163,4 +163,34 @@ RSpec.describe Legion::Extensions::SelfTalk::Runners::SelfTalk do
       expect(result[:voice_count]).to eq(1)
     end
   end
+
+  describe '#decay_voices' do
+    it 'returns decayed count and voices array' do
+      register_voice
+      result = client.decay_voices
+      expect(result).to include(:decayed, :voices)
+    end
+
+    it 'decrements volume on active voices' do
+      vid = register_voice
+      client.amplify_voice(voice_id: vid, amount: 0.3)
+      result = client.decay_voices
+      expect(result[:decayed]).to eq(1)
+      expect(result[:voices].first[:volume]).to be < 1.0
+    end
+
+    it 'returns zero decayed when no voices registered' do
+      result = client.decay_voices
+      expect(result[:decayed]).to eq(0)
+      expect(result[:voices]).to eq([])
+    end
+
+    it 'includes id, name, and volume in each voice entry' do
+      register_voice(name: 'Critic', type: :critic)
+      result = client.decay_voices
+      voice = result[:voices].first
+      expect(voice).to include(:id, :name, :volume)
+      expect(voice[:name]).to eq('Critic')
+    end
+  end
 end

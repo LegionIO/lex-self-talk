@@ -74,6 +74,17 @@ module Legion
             summary
           end
 
+          def decay_voices(**)
+            decayed = 0
+            voice_list = engine.voices.values.select(&:active).map do |voice|
+              voice.dampen!(Helpers::Constants::VOLUME_DECAY)
+              decayed += 1
+              { id: voice.id, name: voice.name, volume: voice.volume }
+            end
+            Legion::Logging.debug "[self-talk] voice decay: decayed=#{decayed} voices"
+            { decayed: decayed, voices: voice_list }
+          end
+
           private
 
           def engine
