@@ -38,10 +38,27 @@ module Legion
             result
           end
 
-          def conclude_dialogue(dialogue_id:, summary:, **)
-            result = engine.conclude_dialogue(dialogue_id: dialogue_id, summary: summary)
+          def conclude_dialogue(dialogue_id:, summary: nil, **)
+            resolved_summary = summary || generate_summary_for_dialogue(dialogue_id)
+            result = engine.conclude_dialogue(dialogue_id: dialogue_id, summary: resolved_summary)
             Legion::Logging.info "[self_talk] conclude_dialogue: id=#{dialogue_id} concluded=#{result[:concluded]}"
             result
+          end
+
+          def generate_voice_turn(dialogue_id:, voice_id:, **)
+            dialogue_data = engine.dialogues[dialogue_id]
+            voice_data    = engine.voices[voice_id]
+            return missing_entity_error(dialogue_data) unless dialogue_data && voice_data
+
+            content, source = resolve_turn_content(voice_data, dialogue_data)
+            turn_result = add_turn(
+              dialogue_id: dialogue_id,
+              voice_id:    voice_id,
+              content:     content[:content],
+              position:    content[:position]
+            )
+            Legion::Logging.debug "[self_talk] generate_voice_turn: dialogue=#{dialogue_id} voice=#{voice_id} source=#{source}"
+            { generated: true, source: source, turn: turn_result[:turn] }
           end
 
           def deadlock_dialogue(dialogue_id:, **)
@@ -89,6 +106,60 @@ module Legion
 
           def engine
             @engine ||= Helpers::SelfTalkEngine.new
+          end
+
+          def missing_entity_error(dialogue_data)
+            { generated: false, reason: dialogue_data ? :voice_not_found : :dialogue_not_found }
+          end
+
+          def resolve_turn_content(voice_data, dialogue_data)
+            prior_turns = build_prior_turns(dialogue_data)
+            if Helpers::LlmEnhancer.available?
+              llm_result = Helpers::LlmEnhancer.generate_turn(
+                voice_type:  voice_data.voice_type,
+                topic:       dialogue_data.topic,
+                prior_turns: prior_turns
+              )
+              return [llm_result, :llm] if llm_result
+            end
+            [stub_turn_content(voice_data.voice_type, dialogue_data.topic), :mechanical]
+          end
+
+          def build_prior_turns(dialogue_data)
+            dialogue_data.turns.map do |t|
+              speaking_voice = engine.voices[t.voice_id]
+              { voice_id: t.voice_id, voice_name: speaking_voice&.name || t.voice_id,
+                position: t.position, content: t.content }
+            end
+          end
+
+          def stub_turn_content(voice_type, topic)
+            { content: "[#{voice_type} perspective on #{topic}]", position: :clarify }
+          end
+
+          def generate_summary_for_dialogue(dialogue_id)
+            dialogue_data = engine.dialogues[dialogue_id]
+            return 'Dialogue concluded' unless dialogue_data
+
+            if Helpers::LlmEnhancer.available?
+              turns = dialogue_data.turns.map do |t|
+                speaking_voice = engine.voices[t.voice_id]
+                {
+                  voice_id:   t.voice_id,
+                  voice_name: speaking_voice&.name || t.voice_id,
+                  position:   t.position,
+                  content:    t.content
+                }
+              end
+
+              llm_result = Helpers::LlmEnhancer.summarize_dialogue(
+                topic: dialogue_data.topic,
+                turns: turns
+              )
+              return llm_result[:summary] if llm_result
+            end
+
+            'Dialogue concluded'
           end
         end
       end
