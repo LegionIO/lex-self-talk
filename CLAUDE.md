@@ -11,7 +11,7 @@ Inner dialogue system for the LegionIO cognitive architecture. Implements Vygots
 ## Gem Info
 
 - **Gem name**: `lex-self-talk`
-- **Version**: `0.1.0`
+- **Version**: `0.1.1`
 - **Module**: `Legion::Extensions::SelfTalk`
 - **Ruby**: `>= 3.4`
 - **License**: MIT
